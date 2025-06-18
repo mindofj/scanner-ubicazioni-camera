@@ -11,41 +11,39 @@ export default function ScannerUbicazioniZXing() {
   const [currentRowIndex, setCurrentRowIndex] = useState(null);
   const [vin, setVin] = useState('');
   const [modello, setModello] = useState('');
-  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if ((step === 1 || step === 2) && !scanning) {
+    if (step === 1 || step === 2) {
       startScanner();
     }
-
     return () => {
-      if (codeReader.current) {
-        codeReader.current.reset();
-      }
+      stopScanner();
     };
   }, [step]);
 
-  const startScanner = () => {
-    if (!videoRef.current) return;
+  const startScanner = async () => {
+    try {
+      if (!videoRef.current) return;
+      codeReader.current = new BrowserMultiFormatReader();
+      await codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+        if (result) {
+          const text = result.getText().trim().toUpperCase();
+          handleScan(text);
+        }
+      });
+    } catch (error) {
+      alert('Errore nell'accesso alla fotocamera. Assicurati di avere concesso i permessi.');
+      console.error(error);
+    }
+  };
 
-    codeReader.current = new BrowserMultiFormatReader();
-    setScanning(true);
-
-    codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
-      if (result) {
-        const text = result.getText().trim().toUpperCase();
-        console.log("Scansione:", text);
-        handleScan(text);
-      }
-      if (err && !(err instanceof NotFoundException)) {
-        console.error("Errore scanner:", err);
-      }
-    });
+  const stopScanner = () => {
+    if (codeReader.current) {
+      codeReader.current.reset();
+    }
   };
 
   const handleScan = (text) => {
-    if (!text) return;
-
     if (step === 1) {
       const index = data.findIndex(row => row.TARGA?.toString().trim().toUpperCase() === text);
       if (index !== -1) {
@@ -54,7 +52,7 @@ export default function ScannerUbicazioniZXing() {
         setModello(data[index].MarcaModello || '');
         setStep(2);
       } else {
-        alert(`Targa "${text}" non trovata nel file.`);
+        alert('Targa non trovata');
       }
     } else if (step === 2 && currentRowIndex !== null) {
       const updated = [...data];
@@ -69,29 +67,15 @@ export default function ScannerUbicazioniZXing() {
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-
     setFileName(file.name);
     const reader = new FileReader();
-
     reader.onload = (evt) => {
-      try {
-        const wb = XLSX.read(evt.target.result, { type: 'binary' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-        const headers = Object.keys(json[0] || {});
-        if (!headers.includes("TARGA") || !headers.includes("VIN") || !headers.includes("UBICAZIONE")) {
-          alert("⚠️ Il file Excel deve contenere le colonne 'TARGA', 'VIN' e 'UBICAZIONE'");
-          return;
-        }
-        setData(json);
-        setStep(1);
-      } catch (error) {
-        console.error("Errore lettura Excel:", error);
-        alert("Errore durante il caricamento del file.");
-      }
+      const wb = XLSX.read(evt.target.result, { type: 'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      setData(json);
+      setStep(1);
     };
-
     reader.readAsBinaryString(file);
   };
 
@@ -115,24 +99,21 @@ export default function ScannerUbicazioniZXing() {
         <>
           <video
             ref={videoRef}
+            style={{ width: '100%', maxWidth: 400, border: '2px solid black' }}
             autoPlay
             muted
             playsInline
-            style={{ width: '100%', maxWidth: 400, border: '2px solid black' }}
           />
           {step === 2 && (
             <>
               <p><strong>VIN:</strong> {vin}</p>
               <p><strong>Modello:</strong> {modello}</p>
-              <p>📦 Ora scansiona l'ubicazione</p>
+              <p>Ora scansiona l'ubicazione</p>
             </>
           )}
-          <button onClick={handleExport} style={{ marginTop: '1rem' }}>
-            📥 Esporta file aggiornato
-          </button>
+          <button onClick={handleExport} style={{ marginTop: '1rem' }}>📥 Esporta file aggiornato</button>
         </>
       )}
     </div>
   );
 }
-
