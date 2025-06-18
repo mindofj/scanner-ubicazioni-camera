@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { BrowserMultiFormatReader } from '@zxing/browser';
+import { BrowserMultiFormatReader, BrowserQRCodeReader } from '@zxing/browser';
 import * as XLSX from 'xlsx';
 
 export default function ScannerUbicazioniZXing() {
@@ -11,60 +11,52 @@ export default function ScannerUbicazioniZXing() {
   const [currentRowIndex, setCurrentRowIndex] = useState(null);
   const [vin, setVin] = useState('');
   const [modello, setModello] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (step === 1 || step === 2) {
+    if ((step === 1 || step === 2) && videoRef.current) {
       startScanner();
     }
     return () => {
-      if (codeReader.current) {
-        codeReader.current.reset();
-      }
+      codeReader.current?.reset();
     };
   }, [step]);
 
   const startScanner = async () => {
     try {
-      if (!videoRef.current) return;
-
-      codeReader.current = new BrowserMultiFormatReader();
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputDevices = devices.filter(device => device.kind === 'videoinput');
-      const selectedDeviceId = videoInputDevices[0]?.deviceId;
-
-      if (!selectedDeviceId) {
-        setError("Nessuna fotocamera trovata");
-        return;
-      }
-
-      await codeReader.current.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, err) => {
+      codeReader.current?.reset();
+      const reader = new BrowserMultiFormatReader();
+      codeReader.current = reader;
+      const deviceId = (await BrowserMultiFormatReader.listVideoInputDevices())[0].deviceId;
+      reader.decodeFromVideoDevice(deviceId, videoRef.current, (result, err) => {
         if (result) {
-          const text = result.getText().trim().toUpperCase();
-          handleScan(text);
+          reader.reset();
+          handleScan(result.getText());
         }
       });
-    } catch (err) {
-      console.error('Errore accesso fotocamera:', err);
-      setError("Errore nell'accesso alla fotocamera. Verifica i permessi.");
+    } catch (e) {
+      console.error(e);
+      setMessage('Errore accesso videocamera');
     }
   };
 
   const handleScan = (text) => {
     if (step === 1) {
-      const index = data.findIndex(row => row.TARGA?.toString().trim().toUpperCase() === text);
-      if (index !== -1) {
-        setCurrentRowIndex(index);
-        setVin(data[index].VIN || '');
-        setModello(data[index].MarcaModello || '');
+      const idx = data.findIndex(r => r.TARGA?.toString().trim().toUpperCase() === text);
+      if (idx !== -1) {
+        setCurrentRowIndex(idx);
+        setVin(data[idx].VIN || '');
+        setModello(data[idx].MarcaModello || '');
         setStep(2);
+        setMessage('');
       } else {
-        alert('Targa non trovata');
+        setMessage('Targa non trovata');
+        setTimeout(() => setStep(1), 1500);
       }
     } else if (step === 2 && currentRowIndex !== null) {
-      const updated = [...data];
-      updated[currentRowIndex].UBICAZIONE = text;
-      setData(updated);
+      const newData = [...data];
+      newData[currentRowIndex].UBICAZIONE = text;
+      setData(newData);
       setCurrentRowIndex(null);
       setVin('');
       setModello('');
@@ -73,17 +65,16 @@ export default function ScannerUbicazioniZXing() {
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    setFileName(file.name);
+    const f = e.target.files[0];
+    setFileName(f.name);
     const reader = new FileReader();
-    reader.onload = (evt) => {
+    reader.onload = evt => {
       const wb = XLSX.read(evt.target.result, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      setData(json);
+      setData(XLSX.utils.sheet_to_json(ws, { defval: '' }));
       setStep(1);
     };
-    reader.readAsBinaryString(file);
+    reader.readAsBinaryString(f);
   };
 
   const handleExport = () => {
@@ -94,26 +85,25 @@ export default function ScannerUbicazioniZXing() {
   };
 
   return (
-    <div style={{ padding: '1rem', textAlign: 'center' }}>
+    <div style={{ padding: 20, maxWidth: 480, margin: 'auto', textAlign: 'center' }}>
       {step === 0 && (
         <>
           <h2>Carica file Excel</h2>
           <input type="file" accept=".xls,.xlsx" onChange={handleFileUpload} />
         </>
       )}
-
       {(step === 1 || step === 2) && (
         <>
-          <video ref={videoRef} style={{ width: '100%', maxWidth: 400, border: '2px solid black' }} autoPlay muted />
-          {error && <p style={{ color: 'red' }}>{error}</p>}
+          <video ref={videoRef} style={{ width: '100%', maxHeight: 400, border: '1px solid #333' }} />
           {step === 2 && (
             <>
               <p><strong>VIN:</strong> {vin}</p>
               <p><strong>Modello:</strong> {modello}</p>
-              <p>Ora scansiona l'ubicazione</p>
+              <p><em>Scansiona ora l’ubicazione</em></p>
             </>
           )}
-          <button onClick={handleExport} style={{ marginTop: '1rem' }}>📥 Esporta file aggiornato</button>
+          {message && <div style={{ color: 'red', margin: 10 }}>{message}</div>}
+          <button onClick={handleExport} style={{ marginTop: 10 }}>📥 Esporta file</button>
         </>
       )}
     </div>
