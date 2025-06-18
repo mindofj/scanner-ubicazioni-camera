@@ -15,9 +15,11 @@ export default function ScannerUbicazioniZXing() {
 
   useEffect(() => {
     if (step === 1 || step === 2) {
+      console.log('Avvio scanner');
       startScanner();
     }
     return () => {
+      console.log('Reset scanner');
       stopScanner();
     };
   }, [step]);
@@ -30,6 +32,7 @@ export default function ScannerUbicazioniZXing() {
       await codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
         if (result) {
           const text = result.getText().trim().toUpperCase();
+          console.log('Codice letto:', text);
           handleScan(text);
         }
       });
@@ -46,24 +49,29 @@ export default function ScannerUbicazioniZXing() {
   };
 
   const handleScan = (text) => {
-    if (step === 1) {
-      const index = data.findIndex(row => row.TARGA?.toString().trim().toUpperCase() === text);
-      if (index !== -1) {
-        setCurrentRowIndex(index);
-        setVin(data[index].VIN || '');
-        setModello(data[index].MarcaModello || '');
-        setStep(2);
-      } else {
-        alert('Targa non trovata');
+    try {
+      if (step === 1) {
+        const index = data.findIndex(row => row.TARGA?.toString().trim().toUpperCase() === text);
+        if (index !== -1) {
+          console.log('Targa trovata in riga:', index);
+          setCurrentRowIndex(index);
+          setVin(data[index].VIN || '');
+          setModello(data[index].MarcaModello || '');
+          setStep(2);
+        } else {
+          alert('Targa non trovata');
+        }
+      } else if (step === 2 && currentRowIndex !== null) {
+        const updated = [...data];
+        updated[currentRowIndex].UBICAZIONE = text;
+        setData(updated);
+        setCurrentRowIndex(null);
+        setVin('');
+        setModello('');
+        setStep(1);
       }
-    } else if (step === 2 && currentRowIndex !== null) {
-      const updated = [...data];
-      updated[currentRowIndex].UBICAZIONE = text;
-      setData(updated);
-      setCurrentRowIndex(null);
-      setVin('');
-      setModello('');
-      setStep(1);
+    } catch (error) {
+      console.error('Errore durante la gestione della scansione:', error);
     }
   };
 
