@@ -11,6 +11,7 @@ export default function ScannerUbicazioniZXing() {
   const [currentRowIndex, setCurrentRowIndex] = useState(null);
   const [vin, setVin] = useState('');
   const [modello, setModello] = useState('');
+  const [cameraError, setCameraError] = useState(false);
 
   useEffect(() => {
     if (step === 1 || step === 2) {
@@ -24,6 +25,7 @@ export default function ScannerUbicazioniZXing() {
   const startScanner = async () => {
     try {
       if (!videoRef.current) return;
+      setCameraError(false);
       codeReader.current = new BrowserMultiFormatReader();
       await codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
         if (result) {
@@ -32,8 +34,8 @@ export default function ScannerUbicazioniZXing() {
         }
       });
     } catch (error) {
-      alert('Errore nell\'accesso alla fotocamera. Assicurati di avere concesso i permessi.');
-      console.error(error);
+      setCameraError(true);
+      console.error('Errore fotocamera:', error);
     }
   };
 
@@ -97,13 +99,20 @@ export default function ScannerUbicazioniZXing() {
 
       {(step === 1 || step === 2) && (
         <>
-          <video
-            ref={videoRef}
-            style={{ width: '100%', maxWidth: 400, border: '2px solid black' }}
-            autoPlay
-            muted
-            playsInline
-          />
+          {cameraError ? (
+            <div style={{ color: 'red', marginBottom: '1rem' }}>
+              Errore nell'accesso alla fotocamera. Assicurati di aver concesso i permessi e che un'altra app non la stia già usando.
+            </div>
+          ) : (
+            <video
+              ref={videoRef}
+              style={{ width: '100%', maxWidth: 400, border: '2px solid black' }}
+              autoPlay
+              muted
+              playsInline
+            />
+          )}
+
           {step === 2 && (
             <>
               <p><strong>VIN:</strong> {vin}</p>
