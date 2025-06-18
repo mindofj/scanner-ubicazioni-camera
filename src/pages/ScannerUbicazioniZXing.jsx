@@ -11,12 +11,13 @@ export default function ScannerUbicazioniZXing() {
   const [currentRowIndex, setCurrentRowIndex] = useState(null);
   const [vin, setVin] = useState('');
   const [modello, setModello] = useState('');
-  const [message, setMessage] = useState('');
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
-    if (step === 1 || step === 2) {
+    if ((step === 1 || step === 2) && !scanning) {
       startScanner();
     }
+
     return () => {
       if (codeReader.current) {
         codeReader.current.reset();
@@ -24,36 +25,27 @@ export default function ScannerUbicazioniZXing() {
     };
   }, [step]);
 
-  const startScanner = async () => {
-    try {
-      codeReader.current?.reset();
-      const reader = new BrowserMultiFormatReader();
-      codeReader.current = reader;
+  const startScanner = () => {
+    if (!videoRef.current) return;
 
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      console.log("Dispositivi video disponibili:", devices);
+    codeReader.current = new BrowserMultiFormatReader();
+    setScanning(true);
 
-      if (!devices.length) {
-        setMessage('❌ Nessuna fotocamera trovata.');
-        return;
+    codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
+      if (result) {
+        const text = result.getText().trim().toUpperCase();
+        console.log("Scansione:", text);
+        handleScan(text);
       }
-
-      const selectedDeviceId = devices[0].deviceId;
-      reader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, err) => {
-        if (result) {
-          reader.reset();
-          handleScan(result.getText().trim().toUpperCase());
-        }
-      });
-
-      setMessage('');
-    } catch (error) {
-      console.error("Errore fotocamera:", error);
-      setMessage('❌ Errore nell\'accesso alla fotocamera.');
-    }
+      if (err && !(err instanceof NotFoundException)) {
+        console.error("Errore scanner:", err);
+      }
+    });
   };
 
   const handleScan = (text) => {
+    if (!text) return;
+
     if (step === 1) {
       const index = data.findIndex(row => row.TARGA?.toString().trim().toUpperCase() === text);
       if (index !== -1) {
@@ -62,7 +54,7 @@ export default function ScannerUbicazioniZXing() {
         setModello(data[index].MarcaModello || '');
         setStep(2);
       } else {
-        alert('Targa non trovata nel file Excel.');
+        alert(`Targa "${text}" non trovata nel file.`);
       }
     } else if (step === 2 && currentRowIndex !== null) {
       const updated = [...data];
@@ -77,15 +69,29 @@ export default function ScannerUbicazioniZXing() {
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
+    if (!file) return;
+
     setFileName(file.name);
     const reader = new FileReader();
+
     reader.onload = (evt) => {
-      const wb = XLSX.read(evt.target.result, { type: 'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
-      setData(json);
-      setStep(1);
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const headers = Object.keys(json[0] || {});
+        if (!headers.includes("TARGA") || !headers.includes("VIN") || !headers.includes("UBICAZIONE")) {
+          alert("⚠️ Il file Excel deve contenere le colonne 'TARGA', 'VIN' e 'UBICAZIONE'");
+          return;
+        }
+        setData(json);
+        setStep(1);
+      } catch (error) {
+        console.error("Errore lettura Excel:", error);
+        alert("Errore durante il caricamento del file.");
+      }
     };
+
     reader.readAsBinaryString(file);
   };
 
@@ -107,19 +113,26 @@ export default function ScannerUbicazioniZXing() {
 
       {(step === 1 || step === 2) && (
         <>
-          <video ref={videoRef} style={{ width: '100%', maxWidth: 400, border: '2px solid black', marginTop: '1rem' }} />
-          {message && <p style={{ color: 'red', marginTop: '0.5rem' }}>{message}</p>}
-
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            style={{ width: '100%', maxWidth: 400, border: '2px solid black' }}
+          />
           {step === 2 && (
             <>
               <p><strong>VIN:</strong> {vin}</p>
               <p><strong>Modello:</strong> {modello}</p>
-              <p>Ora scansiona l'ubicazione</p>
+              <p>📦 Ora scansiona l'ubicazione</p>
             </>
           )}
-          <button onClick={handleExport} style={{ marginTop: '1rem' }}>📥 Esporta file aggiornato</button>
+          <button onClick={handleExport} style={{ marginTop: '1rem' }}>
+            📥 Esporta file aggiornato
+          </button>
         </>
       )}
     </div>
   );
 }
+
