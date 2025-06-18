@@ -32,7 +32,7 @@ export default function ScannerUbicazioniZXing() {
         }
       });
     } catch (error) {
-      alert('Errore nell'accesso alla fotocamera. Assicurati di avere concesso i permessi.');
+      alert('Errore nell\'accesso alla fotocamera. Assicurati di avere concesso i permessi.');
       console.error(error);
     }
   };
