@@ -11,10 +11,10 @@ export default function ScannerUbicazioniZXing() {
   const [currentRowIndex, setCurrentRowIndex] = useState(null);
   const [vin, setVin] = useState('');
   const [modello, setModello] = useState('');
-  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if ((step === 1 || step === 2) && !scanning) {
+    if (step === 1 || step === 2) {
       startScanner();
     }
     return () => {
@@ -24,16 +24,30 @@ export default function ScannerUbicazioniZXing() {
     };
   }, [step]);
 
-  const startScanner = () => {
-    if (!videoRef.current) return;
-    codeReader.current = new BrowserMultiFormatReader();
-    setScanning(true);
-    codeReader.current.decodeFromVideoDevice(null, videoRef.current, (result, err) => {
-      if (result) {
-        const text = result.getText().trim().toUpperCase();
-        handleScan(text);
+  const startScanner = async () => {
+    try {
+      if (!videoRef.current) return;
+
+      codeReader.current = new BrowserMultiFormatReader();
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputDevices = devices.filter(device => device.kind === 'videoinput');
+      const selectedDeviceId = videoInputDevices[0]?.deviceId;
+
+      if (!selectedDeviceId) {
+        setError("Nessuna fotocamera trovata");
+        return;
       }
-    });
+
+      await codeReader.current.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (result, err) => {
+        if (result) {
+          const text = result.getText().trim().toUpperCase();
+          handleScan(text);
+        }
+      });
+    } catch (err) {
+      console.error('Errore accesso fotocamera:', err);
+      setError("Errore nell'accesso alla fotocamera. Verifica i permessi.");
+    }
   };
 
   const handleScan = (text) => {
@@ -90,13 +104,8 @@ export default function ScannerUbicazioniZXing() {
 
       {(step === 1 || step === 2) && (
         <>
-          <video
-            ref={videoRef}
-            style={{ width: '100%', maxWidth: 480, border: '2px solid black' }}
-            muted
-            playsInline
-            autoPlay
-          />
+          <video ref={videoRef} style={{ width: '100%', maxWidth: 400, border: '2px solid black' }} autoPlay muted />
+          {error && <p style={{ color: 'red' }}>{error}</p>}
           {step === 2 && (
             <>
               <p><strong>VIN:</strong> {vin}</p>
